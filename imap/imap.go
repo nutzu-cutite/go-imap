@@ -13,8 +13,8 @@ import (
 
 // Timeout values for the Dial functions.
 const (
-	netTimeout    = 30 * time.Second // Time to establish a TCP connection
-	clientTimeout = 60 * time.Second // Time to receive greeting and capabilities
+	netTimeout    = 5 * time.Second // Time to establish a TCP connection
+	clientTimeout = 10 * time.Second // Time to receive greeting and capabilities
 )
 
 // Dial returns a new Client connected to an IMAP server at addr.
@@ -30,11 +30,50 @@ func Dial(addr string) (c *Client, err error) {
 	return
 }
 
+// Dial using a specific local address
+func DialLocalAddr(laddr string, addr string) (c *Client, err error) {
+	
+	localAddr := &net.TCPAddr{IP: net.ParseIP(laddr)}
+	dialer := net.Dialer{
+		LocalAddr: localAddr,
+		Timeout: netTimeout,
+	}
+	
+	addr = defaultPort(addr, "143")
+	conn, err := dialer.Dial("tcp", addr)
+	if err == nil {
+		host, _, _ := net.SplitHostPort(addr)
+		if c, err = NewClient(conn, host, clientTimeout); err != nil {
+			conn.Close()
+		}
+	}
+	return
+}
+
 // DialTLS returns a new Client connected to an IMAP server at addr using the
 // specified config for encryption.
 func DialTLS(addr string, config *tls.Config) (c *Client, err error) {
 	addr = defaultPort(addr, "993")
 	conn, err := net.DialTimeout("tcp", addr, netTimeout)
+	if err == nil {
+		host, _, _ := net.SplitHostPort(addr)
+		tlsConn := tls.Client(conn, setServerName(config, host))
+		if c, err = NewClient(tlsConn, host, clientTimeout); err != nil {
+			conn.Close()
+		}
+	}
+	return
+}
+
+func DialLocalAddrTLS(laddr string, addr string, config *tls.Config) (c *Client, err error) {
+	localAddr := &net.TCPAddr{IP: net.ParseIP(laddr)}
+	dialer := net.Dialer{
+		LocalAddr: localAddr,
+		Timeout: netTimeout,
+	}
+	
+	addr = defaultPort(addr, "993")
+	conn, err := dialer.Dial("tcp", addr)
 	if err == nil {
 		host, _, _ := net.SplitHostPort(addr)
 		tlsConn := tls.Client(conn, setServerName(config, host))
